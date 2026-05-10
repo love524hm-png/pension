@@ -407,6 +407,17 @@ body.cs-kr .chip.n{border-color:rgba(91,158,239,.4)}
 .snap-row .snap-d{color:var(--text2);font-family:'Inter',sans-serif;font-weight:600}
 .snap-row .snap-v{font-family:'Inter',sans-serif;font-weight:700;color:var(--text)}
 .snap-row .snap-ch{font-size:10px;font-weight:700;font-family:'Inter',sans-serif;margin-left:6px}
+/* ── IRP 안전자산 뱃지 ── */
+.safe-pct{display:inline-flex;align-items:center;gap:3px;font-size:9.5px;font-weight:700;padding:2px 6px;border-radius:5px;margin-left:6px;letter-spacing:.2px;font-variant-numeric:tabular-nums}
+.safe-pct.ok{background:rgba(127,184,154,.15);color:var(--sage);border:1px solid rgba(127,184,154,.3)}
+.safe-pct.lo{background:rgba(232,184,74,.18);color:var(--gold);border:1px solid rgba(232,184,74,.4);animation:pulse 1.8s ease-in-out infinite}
+@keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(232,184,74,.4)}50%{box-shadow:0 0 0 4px rgba(232,184,74,0)}}
+.safe-row{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 12px;background:rgba(255,255,255,.02);border-radius:9px;margin-top:8px;font-size:11px}
+.safe-row strong{font-family:'Inter',sans-serif;font-weight:700;font-variant-numeric:tabular-nums}
+.safe-bar{display:flex;height:6px;border-radius:3px;overflow:hidden;background:rgba(255,255,255,.05);margin-top:6px}
+.safe-bar .sf{background:linear-gradient(90deg,var(--sage),#5d9a7d);transition:flex .3s var(--ease-soft)}
+.safe-bar .rk{background:linear-gradient(90deg,var(--ac),var(--ac2));transition:flex .3s var(--ease-soft)}
+
 /* ── AI insight card ── */
 .ai-card{background:linear-gradient(135deg,rgba(110,168,254,.08),rgba(127,184,154,.05));border:1px solid var(--border-soft);border-radius:14px;padding:13px 14px;margin-bottom:12px;display:flex;align-items:flex-start;gap:11px}
 .ai-ic{font-size:18px;line-height:1.2;flex-shrink:0;margin-top:1px;filter:drop-shadow(0 0 8px rgba(110,168,254,.35))}
@@ -718,6 +729,14 @@ body.privacy .hval:active,body.privacy .acct-eval:active{filter:none}
       <div class="fg"><label class="fl">보유수량 (주)</label><input class="fi" id="f-qt" type="number" placeholder="0" inputmode="numeric"></div>
       <div class="fg"><label class="fl">매입평단가 (원)</label><input class="fi" id="f-av" type="number" placeholder="0" inputmode="numeric"></div>
     </div>
+    <div class="fg" id="fg-safe">
+      <label class="fl">IRP 안전자산 분류 <span style="color:var(--text3);font-weight:400">— IRP 30% 룰 적용</span></label>
+      <select class="fsel" id="f-sf">
+        <option value="0">위험자산 (주식·리츠·원자재 등)</option>
+        <option value="50">혼합형 (주식 40% 이하 채권혼합)</option>
+        <option value="100">안전자산 (채권·국채·MMF·예금)</option>
+      </select>
+    </div>
     <div class="mac">
       <button class="mcl" onclick="covD('ov-h')">취소</button>
       <button class="msv" id="m-sv" onclick="saveH()">저장</button>
@@ -800,15 +819,28 @@ body.privacy .hval:active,body.privacy .acct-eval:active{filter:none}
 <div id="toast"></div>
 <script>
 // ── State ──
-const SCHEMA_V=1;
+const SCHEMA_V=2;
+const IRP_SAFE_MIN=30; // IRP 안전자산 최소 30% (법정)
+const IRP_RISK_MAX=70; // IRP 위험자산 최대 70%
 let S={
   v:SCHEMA_V,
   accounts:[{id:'irp',name:'IRP',mc:0,cash:0},{id:'pension',name:'연금저축',mc:0,cash:0}],
   holdings:[],prices:{},lu:null,dividends:[],snapshots:[],lastProxyIdx:0,
   ui:{colorScheme:'kr',privacy:false,pfSort:'default',collapsed:{irp:false,pen:false},
-      density:'compact',fontSize:'normal',targetCashBuffer:false,wdStartAge:65,wdYears:25}
+      density:'compact',fontSize:'normal',targetCashBuffer:false,wdStartAge:65,wdYears:25,
+      irpAutoSafe:false}
 };
 let curTab='guide',eid=null,ract='irp',bulkAcct='irp',pfSearch='';
+
+// IRP 안전자산 휴리스틱 — 종목명 패턴 기반 자동 분류
+function inferSafeRatio(name){
+  if(!name)return 0;
+  // 채권·국채·MMF·단기자금 → 100% 안전자산
+  if(/국채|회사채|채권|단기채|장기채|MMF|머니마켓|단기자금|단기통안/.test(name))return 100;
+  // 채권혼합형 (주식 40% 이하): 대부분 IRP에서 100% 안전자산 인정
+  if(/혼합/.test(name))return 100;
+  return 0;
+}
 
 // ── Storage ──
 function sv(){
@@ -828,11 +860,18 @@ function sv(){
   }
 }
 function migrate(p){
-  // future migrations branch on p.v
   if(!p.v||p.v<1){
     // v0→v1: ensure snapshots, ui defaults
     if(!Array.isArray(p.snapshots))p.snapshots=[];
     if(!p.ui)p.ui={};
+  }
+  if(!p.v||p.v<2){
+    // v1→v2: holdings에 safeRatio 자동 추정 부여
+    (p.holdings||[]).forEach(h=>{
+      if(h.safeRatio===undefined||h.safeRatio===null){
+        h.safeRatio=inferSafeRatio(h.name);
+      }
+    });
   }
   p.v=SCHEMA_V;
   return p;
@@ -1052,16 +1091,24 @@ function hCalc(h){
   const pd=S.prices[h.code],cur=pd?.ok?pd.price:null;
   const inv=h.qty*h.avg,ev=cur!==null?h.qty*cur:null;
   const pnl=ev!==null?ev-inv:null,pnlP=pnl!==null&&inv>0?pnl/inv*100:null;
-  return{cur,inv,ev,pnl,pnlP,chgP:pd?.chgP??null};
+  const sr=(h.safeRatio||0)/100;
+  const evOrInv=ev??inv;
+  return{cur,inv,ev,pnl,pnlP,chgP:pd?.chgP??null,
+    safeAmt:evOrInv*sr,riskAmt:evOrInv*(1-sr)};
 }
 function aCalc(aid){
   const hs=S.holdings.filter(h=>h.a===aid);
   const acct=S.accounts.find(x=>x.id===aid);
   const cash=acct?.cash||0;
-  let inv=0,ev=0;
-  hs.forEach(h=>{const c=hCalc(h);inv+=c.inv;ev+=c.ev??c.inv});
-  // 평가금액에 현금 포함 (대시보드 표시용)
-  return{inv,ev,evWithCash:ev+cash,cash,pnl:ev-inv,pnlP:inv>0?(ev-inv)/inv*100:0};
+  let inv=0,ev=0,safeEv=0,riskEv=0;
+  hs.forEach(h=>{const c=hCalc(h);inv+=c.inv;ev+=c.ev??c.inv;safeEv+=c.safeAmt;riskEv+=c.riskAmt});
+  // IRP는 현금도 안전자산으로 인정
+  const safeWithCash=aid==='irp'?safeEv+cash:safeEv;
+  const totWithCash=ev+cash;
+  return{inv,ev,evWithCash:totWithCash,cash,pnl:ev-inv,pnlP:inv>0?(ev-inv)/inv*100:0,
+    safeEv,riskEv,safeWithCash,
+    safePct:totWithCash>0?(safeWithCash/totWithCash*100):0,
+    riskPct:totWithCash>0?(riskEv/totWithCash*100):0};
 }
 
 // ── Pie Chart ──
@@ -1280,6 +1327,11 @@ function renderAIInsight(){
   const penA=S.accounts.find(x=>x.id==='pension');
   const irpY=(irpA?.mc||0)*12,penY=(penA?.mc||0)*12;
   const insights=[];
+  // 0. IRP 안전자산 30% 룰 (최우선)
+  if(irp.evWithCash>0&&irp.safePct<IRP_SAFE_MIN){
+    const need=Math.max(0,(IRP_SAFE_MIN/100*irp.evWithCash)-irp.safeWithCash);
+    insights.push({ic:'🛡️',ttl:'IRP 안전자산 미달',msg:`현재 ${irp.safePct.toFixed(1)}% (법정 30% 미만). 채권/채권혼합 ${fmt(need)}원 추가 필요.`,cta:`go('rebal')`,priority:0});
+  }
   // 1. 한도 잔여
   const penRoom=6000000-Math.min(penY,6000000);
   if(penY>0&&penRoom>500000){
@@ -1314,7 +1366,9 @@ function renderAIInsight(){
     insights.push({ic:'🛡️',ttl:'IRP 안내',msg:`중도해지 시 세액공제분·운용수익에 16.5% 기타소득세. 55세 이후 연금수령 권장.`});
   }
   if(!insights.length)return'';
-  const ins=insights[0]; // show top one
+  // priority 0 (IRP 룰)이 있으면 그것 우선, 없으면 첫 번째
+  insights.sort((a,b)=>(a.priority??99)-(b.priority??99));
+  const ins=insights[0];
   return`<div class="ai-card">
     <div class="ai-ic">${ins.ic}</div>
     <div class="ai-body">
@@ -1425,7 +1479,7 @@ function renderDash(){
 
     <div class="acct-grid">
       <div class="acct-card">
-        <div class="acct-badge">IRP</div>
+        <div class="acct-badge">IRP <span class="safe-pct ${irp.safePct<IRP_SAFE_MIN?'lo':'ok'}" title="안전자산 비중 (법정 30% 이상)">🛡️ ${irp.safePct.toFixed(0)}%</span></div>
         <div class="acct-eval">${fmt(irp.evWithCash)}원</div>
         <div class="acct-invest">종목 ${fmt(irp.ev)}원${irp.cash?` · 현금 <span style="color:var(--gold)">${fmt(irp.cash)}원</span>`:''}</div>
         <div class="acct-ret"><span class="${pc(irp.pnl)}">${fp(irp.pnlP)}</span> <span style="color:var(--text3);font-size:10.5px">${irp.pnl>=0?'+':''}${fmt(irp.pnl)}원</span></div>
@@ -1585,6 +1639,26 @@ function scheduleRebalCalc(){
   rebalTimer=setTimeout(()=>{if(curTab==='rebal')calcRebal()},350);
 }
 function setCashBuffer(v){S.ui.targetCashBuffer=v;sv();calcRebal(true)}
+function setIrpAutoSafe(v){S.ui.irpAutoSafe=v;sv();calcRebal(true)}
+
+// IRP 룰 적용: 위험자산 합 > 70%면 70% 캡, 안전자산 < 30%면 30% 확장
+function applyIrpSafetyRule(hs,normalizedTgt){
+  // normalizedTgt: holding.id => effective target % (sum=100)
+  const safeTgt=hs.reduce((s,h)=>s+(normalizedTgt[h.id]||0)*((h.safeRatio||0)/100),0);
+  const riskTgt=hs.reduce((s,h)=>s+(normalizedTgt[h.id]||0)*(1-(h.safeRatio||0)/100),0);
+  if(safeTgt>=IRP_SAFE_MIN-0.01)return{adjusted:normalizedTgt,changed:false,safeTgt,riskTgt};
+  // 부족 → 안전자산 비례 확장 + 위험자산 비례 축소
+  const safeMul=safeTgt>0?(IRP_SAFE_MIN/safeTgt):0;
+  const riskMul=riskTgt>0?(IRP_RISK_MAX/riskTgt):0;
+  const out={};
+  hs.forEach(h=>{
+    const orig=normalizedTgt[h.id]||0;
+    const sr=(h.safeRatio||0)/100;
+    out[h.id]=orig*sr*safeMul+orig*(1-sr)*riskMul;
+  });
+  return{adjusted:out,changed:true,safeTgt,riskTgt};
+}
+
 function calcRebal(silent){
   const cashEl=document.getElementById('ra-cash');
   if(!cashEl)return;
@@ -1599,6 +1673,7 @@ function calcRebal(silent){
   const st=hs.reduce((s,h)=>s+h.tgt,0);
   if(!st){document.getElementById('rres').innerHTML='<div class="empty" style="padding:16px">목표비중 설정 필요</div>';if(!silent)toast('목표비중 설정 필요');return}
   const useCashBuffer=!!S.ui?.targetCashBuffer;
+  const useIrpAutoSafe=ract==='irp'&&!!S.ui?.irpAutoSafe;
   // 목표 합계 != 100% 배너
   const sumBanner=Math.abs(st-100)>0.5?`
     <div class="warn-banner" style="margin-bottom:10px;cursor:default">
@@ -1609,6 +1684,18 @@ function calcRebal(silent){
       </div>
       <button class="cs-btn ${useCashBuffer?'on':''}" style="font-size:10.5px;padding:5px 9px" onclick="setCashBuffer(${!useCashBuffer})">${useCashBuffer?'정규화로':'현금보유'}</button>
     </div>`:'';
+  // 정규화된 목표비중 사전 계산 (id별)
+  const normalizedTgt={};
+  hs.forEach(h=>{normalizedTgt[h.id]=useCashBuffer?h.tgt:(h.tgt/st)*100});
+  // IRP 룰 적용 — auto-safe 토글 ON일 때만 보정
+  let irpRuleResult=null;
+  let effectiveTgt=normalizedTgt;
+  if(ract==='irp'){
+    irpRuleResult=applyIrpSafetyRule(hs,normalizedTgt);
+    if(useIrpAutoSafe&&irpRuleResult.changed){
+      effectiveTgt=irpRuleResult.adjusted;
+    }
+  }
   const rows=hs.map(h=>{
     const pd=S.prices[h.code],price=pd?.ok?pd.price:null;
     return{h,price,curAmt:price!==null?h.qty*price:h.qty*h.avg};
@@ -1616,9 +1703,18 @@ function calcRebal(silent){
   // 총 운용금액 = 종목 평가금액 + 계좌현금 + 추가불입
   const totCur=rows.reduce((s,r)=>s+r.curAmt,0);
   const totW=totCur+totalCash;
-  // useCashBuffer면 정규화 안 함 (남는 비중만큼 현금 유지)
+  // IRP 룰 배너
+  const irpBanner=(ract==='irp'&&irpRuleResult&&irpRuleResult.safeTgt<IRP_SAFE_MIN-0.01)?`
+    <div class="warn-banner" style="margin-bottom:10px;cursor:default;${useIrpAutoSafe?'border-color:rgba(127,184,154,.4);background:linear-gradient(90deg,rgba(127,184,154,.12),rgba(127,184,154,.04))':''}">
+      <div class="warn-ic">🛡️</div>
+      <div class="warn-body">
+        <div class="warn-ttl" style="${useIrpAutoSafe?'color:var(--sage)':''}">IRP 안전자산 ${irpRuleResult.safeTgt.toFixed(1)}% — 법정 30% ${useIrpAutoSafe?'자동 보정 중':'미달'}</div>
+        <div class="warn-sub">${useIrpAutoSafe?'위험자산 매수를 70%로 캡, 안전자산 비중 자동 확장':'증권사 IRP에서 위험자산 70% 초과 매수가 거부됩니다'}</div>
+      </div>
+      <button class="cs-btn ${useIrpAutoSafe?'on':''}" style="font-size:10.5px;padding:5px 9px" onclick="setIrpAutoSafe(${!useIrpAutoSafe})">${useIrpAutoSafe?'끄기':'자동보정'}</button>
+    </div>`:'';
   const calc=rows.map(r=>{
-    const nt=useCashBuffer?r.h.tgt:(r.h.tgt/st)*100,tgt=totW*(nt/100),diff=tgt-r.curAmt;
+    const nt=effectiveTgt[r.h.id]||0,tgt=totW*(nt/100),diff=tgt-r.curAmt;
     const qty=r.price?Math.floor(Math.abs(diff)/r.price):0;
     const action=diff>500?'buy':(diff<-500?'sell':'hold');
     const fq=action==='sell'?Math.min(qty,r.h.qty):qty;
@@ -1644,6 +1740,7 @@ function calcRebal(silent){
   </div>`:'';
   document.getElementById('rres').innerHTML=`
     ${sumBanner}
+    ${irpBanner}
     ${summary}
     <div class="rt">
       ${calc.map(r=>`<div class="rr">
@@ -1715,13 +1812,15 @@ function renderAcctHoldings(aid,elId,sumId){
   document.getElementById(elId).innerHTML=hs.length?hs.map(h=>{
     const tgtZero=!h.tgt;
     const tgtMark=tgtZero?`<span style="color:var(--gold);font-weight:700">목표 0% ⚠️</span>`:`목표 ${h.tgt}%`;
+    const sr=h.safeRatio||0;
+    const safeMark=aid==='irp'?` · <span style="color:${sr>=100?'var(--sage)':sr>=50?'var(--gold)':'var(--text3)'}">🛡️${sr}%</span>`:'';
     return `<div class="sr${tgtZero?' tgt-warn':''}">
       <div class="sri">
         <div class="srn">${h.name}</div>
-        <div class="srs">코드 ${h.code||'?'} · ${h.qty}주 · 평단 ${fmt(h.avg)}원 · ${tgtMark}</div>
+        <div class="srs">코드 ${h.code||'?'} · ${h.qty}주 · ${tgtMark}${safeMark}</div>
       </div>
-      <button class="ib" style="margin-right:5px" onclick="openEdit(${h.id})">✎</button>
-      <button class="ib d" onclick="delH(${h.id})">✕</button>
+      <button class="ib" style="margin-right:5px" onclick="openEdit(${h.id})" aria-label="편집">✎</button>
+      <button class="ib d" onclick="delH(${h.id})" aria-label="삭제">✕</button>
     </div>`}).join(''):'<div class="empty" style="padding:14px;font-size:12px">종목 없음</div>';
 }
 function updMC(id,v){const a=S.accounts.find(x=>x.id===id);if(a){a.mc=parseInt(v)||0;sv();renderDash()}}
@@ -1799,7 +1898,7 @@ function getBulkRows(){
     const qty=parseInt(card.querySelector('.bulk-qty')?.value)||0;
     const avg=parseFloat(card.querySelector('.bulk-avg')?.value)||0;
     const tgt=parseFloat(card.querySelector('.bulk-tgt')?.value)||0;
-    rows.push({name,code,qty,avg,tgt});
+    rows.push({name,code,qty,avg,tgt,safeRatio:inferSafeRatio(name)});
   });
   return rows;
 }
@@ -1928,8 +2027,18 @@ function openAdd(acct='irp'){
   document.getElementById('m-sv').textContent='추가';
   document.getElementById('f-ac').value=acct;
   ['f-nm','f-cd','f-qt','f-av','f-tg'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('f-sf').value='0';
+  toggleSafeFieldVisibility(acct);
   document.getElementById('ov-h').classList.add('on');
-  setTimeout(()=>document.getElementById('f-nm').focus(),300);
+  // 종목명 입력 시 휴리스틱으로 안전자산 자동 추정
+  const nmEl=document.getElementById('f-nm'),sfEl=document.getElementById('f-sf');
+  nmEl.oninput=()=>{const r=inferSafeRatio(nmEl.value);if(r>0&&sfEl.value==='0')sfEl.value=String(r)};
+  document.getElementById('f-ac').onchange=e=>toggleSafeFieldVisibility(e.target.value);
+  setTimeout(()=>nmEl.focus(),300);
+}
+function toggleSafeFieldVisibility(acct){
+  const fg=document.getElementById('fg-safe');
+  if(fg)fg.style.display=acct==='irp'?'block':'none';
 }
 function openEdit(id){
   const h=S.holdings.find(x=>x.id===id);if(!h)return;
@@ -1942,6 +2051,10 @@ function openEdit(id){
   document.getElementById('f-qt').value=h.qty;
   document.getElementById('f-av').value=h.avg;
   document.getElementById('f-tg').value=h.tgt;
+  document.getElementById('f-sf').value=String(h.safeRatio??inferSafeRatio(h.name));
+  document.getElementById('f-nm').oninput=null;
+  toggleSafeFieldVisibility(h.a);
+  document.getElementById('f-ac').onchange=e=>toggleSafeFieldVisibility(e.target.value);
   document.getElementById('ov-h').classList.add('on');
 }
 function saveH(){
@@ -1952,7 +2065,8 @@ function saveH(){
     code:document.getElementById('f-cd').value.trim().replace(/[^A-Za-z0-9]/g,'').toUpperCase(),
     qty:parseInt(document.getElementById('f-qt').value)||0,
     avg:parseInt(document.getElementById('f-av').value)||0,
-    tgt:parseFloat(document.getElementById('f-tg').value)||0
+    tgt:parseFloat(document.getElementById('f-tg').value)||0,
+    safeRatio:parseInt(document.getElementById('f-sf').value)||0
   };
   if(eid){const i=S.holdings.findIndex(x=>x.id===eid);if(i>=0)S.holdings[i]={id:eid,...h}}
   else{const mx=S.holdings.reduce((m,x)=>Math.max(m,x.id),0);S.holdings.push({id:mx+1,...h})}
@@ -2084,7 +2198,7 @@ function importData(e){
 function resetAll(){
   if(!confirm('모든 데이터를 삭제하시겠습니까?\n이 작업은 되돌릴 수 없습니다.'))return;
   localStorage.removeItem('pf5');
-  S={v:SCHEMA_V,accounts:[{id:'irp',name:'IRP',mc:0,cash:0},{id:'pension',name:'연금저축',mc:0,cash:0}],holdings:[],prices:{},lu:null,dividends:[],snapshots:[],lastProxyIdx:0,ui:{colorScheme:'kr',privacy:false,pfSort:'default',collapsed:{irp:false,pen:false},density:'compact',fontSize:'normal',targetCashBuffer:false,wdStartAge:65,wdYears:25}};
+  S={v:SCHEMA_V,accounts:[{id:'irp',name:'IRP',mc:0,cash:0},{id:'pension',name:'연금저축',mc:0,cash:0}],holdings:[],prices:{},lu:null,dividends:[],snapshots:[],lastProxyIdx:0,ui:{colorScheme:'kr',privacy:false,pfSort:'default',collapsed:{irp:false,pen:false},density:'compact',fontSize:'normal',targetCashBuffer:false,wdStartAge:65,wdYears:25,irpAutoSafe:false}};
   sv();applyUI();renderAll();toast('초기화 완료');
 }
 
