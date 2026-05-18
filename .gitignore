@@ -5,3 +5,4 @@ pension_*.json
 # 로컬 백업·시안 (롤백용으로 디스크에만 보관)
 pension-app-v*.html
 CLAUDE.md
+setup.md
