@@ -226,6 +226,10 @@ body.cs-kr .chip.n{border-color:rgba(91,158,239,.4)}
 .warn-body{flex:1;min-width:0}
 .warn-ttl{font-size:12px;font-weight:700;color:var(--gold);margin-bottom:2px}
 .warn-sub{font-size:10.5px;color:var(--text3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.backup-banner{background:linear-gradient(90deg,rgba(127,184,154,.15),rgba(127,184,154,.04));border-color:rgba(127,184,154,.32)}
+.backup-banner .warn-ttl{color:var(--sage)}
+.mc-banner{background:linear-gradient(90deg,rgba(110,168,254,.15),rgba(110,168,254,.04));border-color:rgba(110,168,254,.32)}
+.mc-banner .warn-ttl{color:var(--ac)}
 .mbtn{font-size:10px;color:var(--ac);cursor:pointer;border:none;background:transparent;padding:2px 4px;font-family:'Noto Sans KR',sans-serif}
 
 /* ── REBAL ── */
@@ -489,7 +493,7 @@ body.privacy .hval:active,body.privacy .acct-eval:active{filter:none}
 
       <div class="gtip">
         <div class="gtip-title">💾 데이터 저장 안내</div>
-        <div class="gtip-body">입력한 모든 정보는 <strong style="color:var(--text)">이 기기의 브라우저(localStorage)에 자동 저장</strong>됩니다.<br>앱을 껐다 켜도 유지되며, 브라우저 데이터를 직접 삭제하거나 '초기화' 버튼을 누르지 않는 한 사라지지 않아요.<br>중요 데이터는 설정 탭에서 <strong style="color:var(--text)">JSON 내보내기</strong>로 백업하세요.</div>
+        <div class="gtip-body">입력한 모든 정보는 <strong style="color:var(--text)">이 기기의 브라우저에만</strong> 저장됩니다. 서버로 보내지 않기 때문에 안전한 대신, <strong style="color:var(--gold)">만든 사람도 복구해 드릴 수 없어요.</strong><br><br>다음 경우에 데이터가 사라집니다 — 기기를 바꾸거나 잃었을 때, 브라우저 데이터를 삭제했을 때, 시크릿 모드로 열었을 때, 아이폰 사파리에서 <strong style="color:var(--text)">7일 이상 앱을 열지 않았을 때</strong>(홈 화면에 추가하면 예방됩니다).<br><br>그래서 설정 탭의 <strong style="color:var(--text)">JSON 내보내기</strong>로 가끔 백업해 두세요. 저장한 파일은 메일이나 클라우드에도 한 부 두시는 걸 권합니다.</div>
       </div>
 
       <div class="gcard">
@@ -563,7 +567,7 @@ body.privacy .hval:active,body.privacy .acct-eval:active{filter:none}
       <div class="gfaq">
         <div class="gfaq-item">
           <div class="gfaq-q">앱 껐다 켜면 데이터 사라지나요?</div>
-          <div class="gfaq-a">아니요. localStorage에 저장되므로 브라우저를 닫아도 유지됩니다. 단, 브라우저 쿠키·사이트 데이터를 일괄 삭제하면 초기화됩니다. 중요한 데이터는 설정 탭에서 JSON으로 백업하세요.</div>
+          <div class="gfaq-a">앱을 껐다 켜는 것만으로는 사라지지 않습니다. 다만 데이터가 <strong style="color:var(--text)">이 기기에만</strong> 있어서, 기기를 바꾸거나 잃으면 함께 사라집니다. 브라우저 데이터 삭제, 시크릿 모드, 아이폰 사파리에서 7일 이상 미접속도 같은 결과가 됩니다.<br>서버에 사본이 없으므로 <strong style="color:var(--gold)">복구해 드릴 방법이 없습니다.</strong> 설정 탭에서 JSON으로 꼭 백업해 두세요.</div>
         </div>
         <div class="gfaq-item">
           <div class="gfaq-q">시세가 안 불러와져요</div>
@@ -601,7 +605,7 @@ body.privacy .hval:active,body.privacy .acct-eval:active{filter:none}
       </div>
       <div class="rinf" id="rsumm"></div>
       <div class="cbox">
-        <div class="clbl" style="margin-bottom:12px">계좌 현금 + 추가 불입액</div>
+        <div class="clbl" style="margin-bottom:12px">계좌 현금 + 이번 회차 불입액</div>
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
           <span style="font-size:12px;color:var(--text2);white-space:nowrap">계좌 현금</span>
           <input class="minp" id="ra-cash" type="number" placeholder="0" inputmode="numeric" value="0"
@@ -609,7 +613,7 @@ body.privacy .hval:active,body.privacy .acct-eval:active{filter:none}
           <span style="font-size:11px;color:var(--text3);white-space:nowrap">원</span>
         </div>
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
-          <span style="font-size:12px;color:var(--text2);white-space:nowrap">추가 불입</span>
+          <span style="font-size:12px;color:var(--text2);white-space:nowrap">이번 회차 불입</span>
           <input class="minp" id="ra-inp" type="number" placeholder="0" inputmode="numeric" value="0"
             style="flex:1;font-size:14px" oninput="updateRebalTotal();scheduleRebalCalc()">
           <span style="font-size:11px;color:var(--text3);white-space:nowrap">원</span>
@@ -819,16 +823,18 @@ body.privacy .hval:active,body.privacy .acct-eval:active{filter:none}
 <div id="toast"></div>
 <script>
 // ── State ──
-const SCHEMA_V=2;
+const SCHEMA_V=3;
 const IRP_SAFE_MIN=30; // IRP 안전자산 최소 30% (법정)
 const IRP_RISK_MAX=70; // IRP 위험자산 최대 70%
+const BACKUP_REMIND_DAYS=14;
+const PRICE_BUDGET_MS=15000; // 시세 조회 전체 예산. 개별 타임아웃 × 폴백 단계는 곱셈이라 총량을 따로 막는다
 let S={
   v:SCHEMA_V,
-  accounts:[{id:'irp',name:'IRP',mc:0,cash:0},{id:'pension',name:'연금저축',mc:0,cash:0}],
+  accounts:[{id:'irp',name:'IRP',mc:0,cash:0,oneTime:0},{id:'pension',name:'연금저축',mc:0,cash:0,oneTime:0}],
   holdings:[],prices:{},lu:null,dividends:[],snapshots:[],lastProxyIdx:0,
   ui:{colorScheme:'kr',privacy:false,pfSort:'default',collapsed:{irp:false,pen:false},
       density:'compact',fontSize:'normal',targetCashBuffer:false,wdStartAge:65,wdYears:25,
-      irpAutoSafe:false}
+      irpAutoSafe:false,lastExport:null,mcVerify:false}
 };
 let curTab='guide',eid=null,ract='irp',bulkAcct='irp',pfSearch='';
 
@@ -873,6 +879,16 @@ function migrate(p){
       }
     });
   }
+  if(!p.v||p.v<3){
+    // v2→v3: 월 불입액(mc)과 일회성 불입액을 분리한다.
+    // v2까지 리밸런싱 탭이 mc를 덮어썼으므로 저장된 mc가 일회성 금액일 수 있다.
+    // 어느 쪽인지 알 방법이 없어 값은 그대로 두고 사용자에게 확인을 요청한다.
+    let dirty=false;
+    (p.accounts||[]).forEach(a=>{
+      if(a.oneTime===undefined||a.oneTime===null){a.oneTime=a.mc||0;if(a.mc)dirty=true}
+    });
+    if(dirty){if(!p.ui)p.ui={};p.ui.mcVerify=true}
+  }
   p.v=SCHEMA_V;
   return p;
 }
@@ -891,12 +907,12 @@ function ld(){
       p=migrate(p);
       S={...S,...p};
       if(!S.prices)S.prices={};
-      if(!S.accounts||!S.accounts.length)S.accounts=[{id:'irp',name:'IRP',mc:0,cash:0},{id:'pension',name:'연금저축',mc:0,cash:0}];
-      S.accounts.forEach(a=>{if(a.cash===undefined)a.cash=0});
+      if(!S.accounts||!S.accounts.length)S.accounts=[{id:'irp',name:'IRP',mc:0,cash:0,oneTime:0},{id:'pension',name:'연금저축',mc:0,cash:0,oneTime:0}];
+      S.accounts.forEach(a=>{if(a.cash===undefined)a.cash=0;if(a.oneTime===undefined)a.oneTime=0});
       if(!S.dividends)S.dividends=[];
       if(!S.snapshots)S.snapshots=[];
       if(!S.ui)S.ui={};
-      const uiD={colorScheme:'kr',privacy:false,pfSort:'default',collapsed:{irp:false,pen:false},density:'compact',fontSize:'normal',targetCashBuffer:false,wdStartAge:65,wdYears:25};
+      const uiD={colorScheme:'kr',privacy:false,pfSort:'default',collapsed:{irp:false,pen:false},density:'compact',fontSize:'normal',targetCashBuffer:false,wdStartAge:65,wdYears:25,lastExport:null,mcVerify:false};
       S.ui={...uiD,...S.ui};
       if(!S.ui.collapsed)S.ui.collapsed={irp:false,pen:false};
     }
@@ -931,17 +947,30 @@ function togglePrivacy(){S.ui.privacy=!S.ui.privacy;sv();applyUI()}
 function parseNum(v){return parseFloat(String(v||'0').replace(/,/g,''))||0}
 
 // CORS 프록시 목록 (순서대로 시도)
+// 2026-09-17 실측으로 살아있는 것만 남겼다. 무료 서비스라 언제든 다시 죽는다 —
+// 죽었을 때 앱이 매달리지 않게 하는 것이 프록시 목록보다 중요하다 (PRICE_BUDGET_MS).
 const PROXIES=[
-  u=>`https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`,
-  u=>`https://corsproxy.io/?${encodeURIComponent(u)}`,
-  u=>`https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(u)}`,
-  u=>`https://thingproxy.freeboard.io/fetch/${u}`,
+  {f:u=>`https://api.cors.lol/?url=${encodeURIComponent(u)}`},
+  {f:u=>`https://r.jina.ai/${u}`,headers:{'x-respond-with':'text'}},
+  {f:u=>`https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`},
 ];
 
-async function tryFetch(url,timeout=8000){
-  // 1. 직접 시도
+let priceDeadline=0;
+const budgetLeft=()=>priceDeadline?priceDeadline-Date.now():Infinity;
+const budgetOver=()=>budgetLeft()<=0;
+
+async function pxFetch(px,url,timeout){
+  const ctrl=new AbortController();
+  const t=setTimeout(()=>ctrl.abort(),Math.min(timeout,Math.max(budgetLeft(),0)));
+  try{return await fetch(px.f(url),{signal:ctrl.signal,headers:px.headers||{}})}
+  finally{clearTimeout(t)}
+}
+
+async function tryFetch(url,timeout=6000){
+  if(budgetOver())return null;
+  // 1. 직접 시도 — CORS를 허용하는 엔드포인트라면 가장 빠르다
   try{
-    const ctrl=new AbortController(),t=setTimeout(()=>ctrl.abort(),timeout);
+    const ctrl=new AbortController(),t=setTimeout(()=>ctrl.abort(),Math.min(timeout,Math.max(budgetLeft(),0)));
     const r=await fetch(url,{signal:ctrl.signal});
     clearTimeout(t);
     if(r.ok){const d=await r.json();return d}
@@ -951,11 +980,9 @@ async function tryFetch(url,timeout=8000){
   const order=[...PROXIES.slice(startIdx),...PROXIES.slice(0,startIdx)];
   const indices=[...Array(PROXIES.length).keys()].slice(startIdx).concat([...Array(PROXIES.length).keys()].slice(0,startIdx));
   for(let i=0;i<order.length;i++){
-    const px=order[i];
+    if(budgetOver())break;
     try{
-      const ctrl=new AbortController(),t=setTimeout(()=>ctrl.abort(),timeout);
-      const r=await fetch(px(url),{signal:ctrl.signal});
-      clearTimeout(t);
+      const r=await pxFetch(order[i],url,timeout);
       if(!r.ok)continue;
       const text=await r.text();
       if(!text||text.startsWith('Host not'))continue;
@@ -1014,16 +1041,16 @@ async function fetchNaverHTML(code){
   try{
     const url=`https://finance.naver.com/item/main.nhn?code=${code}`;
     for(const px of PROXIES){
-      const ctrl=new AbortController(),t=setTimeout(()=>ctrl.abort(),8000);
+      if(budgetOver())break;
       try{
-        const r=await fetch(px(url),{signal:ctrl.signal});
-        clearTimeout(t);if(!r.ok)continue;
+        const r=await pxFetch(px,url,6000);
+        if(!r.ok)continue;
         const html=await r.text();
         // 현재가 파싱
         const m=html.match(/class="no_today"[^>]*>.*?<em[^>]*>([\d,]+)<\/em>/s)
                 ||html.match(/<p class="no_today">.*?<span[^>]*>([\d,]+)<\/span>/s);
         if(m){const price=parseFloat(m[1].replace(/,/g,''));if(price)return{price,chgP:0,ok:true}}
-      }catch{clearTimeout(t)}
+      }catch{}
     }
   }catch{}
   return null;
@@ -1065,19 +1092,24 @@ async function refreshPrices(){
   const codes=[...new Set(S.holdings.filter(h=>h.code).map(h=>h.code))];
   let ok=0;
   const failed=[];
-  for(let i=0;i<codes.length;i+=3){
-    const batch=codes.slice(i,i+3);
-    const res=await Promise.all(batch.map(c=>fetchP(c)));
-    batch.forEach((c,idx)=>{
-      if(res[idx]?.ok){S.prices[c]={...res[idx],fetchedAt:Date.now()};ok++}
-      else{failed.push(c);if(S.prices[c])S.prices[c].stale=true}
-    });
-  }
+  priceDeadline=Date.now()+PRICE_BUDGET_MS;
+  try{
+    for(let i=0;i<codes.length;i+=3){
+      if(budgetOver()){codes.slice(i).forEach(c=>{failed.push(c);if(S.prices[c])S.prices[c].stale=true});break}
+      const batch=codes.slice(i,i+3);
+      const res=await Promise.all(batch.map(c=>fetchP(c)));
+      batch.forEach((c,idx)=>{
+        if(res[idx]?.ok){S.prices[c]={...res[idx],fetchedAt:Date.now()};ok++}
+        else{failed.push(c);if(S.prices[c])S.prices[c].stale=true}
+      });
+    }
+  }finally{priceDeadline=0}
   S.lu=new Date().toISOString();S.lastFail=failed;sv();
   captureSnapshot();
   b.classList.remove('spin');
   renderAll();
-  toast(ok>0?`시세 업데이트 ${ok}/${codes.length}개`:'조회 실패 → 설정>수동 입력');
+  if(ok>0)toast(`시세 업데이트 ${ok}/${codes.length}개`);
+  else toast('시세 서버에 연결하지 못했어요 → 설정 > 수동 가격 입력');
 }
 
 // ── Calculations ──
@@ -1447,6 +1479,28 @@ function renderDash(){
       </div>
     </div>`:'';
 
+  // 백업 알림 — 이 앱의 데이터는 이 기기에만 있다. 기기를 잃으면 같이 사라진다.
+  const bdays=daysSinceBackup();
+  const backupBanner=(bdays===null||bdays>=BACKUP_REMIND_DAYS)?`
+    <div class="warn-banner backup-banner" onclick="exportData()">
+      <div class="warn-ic">💾</div>
+      <div class="warn-body">
+        <div class="warn-ttl">${bdays===null?'백업한 적이 없어요':`마지막 백업 ${bdays}일 전`}</div>
+        <div class="warn-sub">데이터는 이 기기에만 있어요 · 탭하면 파일로 저장됩니다</div>
+      </div>
+    </div>`:'';
+
+  // v2에서 리밸런싱 탭이 월 불입액을 덮어썼을 수 있다 (migrate v3 참조)
+  const mcBanner=S.ui?.mcVerify?`
+    <div class="warn-banner mc-banner" onclick="go('settings')">
+      <div class="warn-ic">🔎</div>
+      <div class="warn-body">
+        <div class="warn-ttl">월 불입액을 한 번 확인해주세요</div>
+        <div class="warn-sub">이전 버전에서 일시금이 섞였을 수 있어요 · 세액공제 계산에 쓰입니다</div>
+      </div>
+      <button class="cs-btn" style="font-size:10.5px;padding:5px 9px" onclick="event.stopPropagation();dismissMcVerify()">확인함</button>
+    </div>`:'';
+
   // mini stacked bar per account
   function acctMiniBar(aid){
     const hs=S.holdings.filter(h=>h.a===aid);
@@ -1459,6 +1513,8 @@ function renderDash(){
     }).join('');
   }
   el.innerHTML=`
+    ${mcBanner}
+    ${backupBanner}
     ${warnBanner}
     ${renderAIInsight()}
     <div class="hero">
@@ -1608,7 +1664,7 @@ function setRA(id){
   document.getElementById('rs-irp').classList.toggle('on',id==='irp');
   document.getElementById('rs-pen').classList.toggle('on',id==='pension');
   const a=S.accounts.find(x=>x.id===id);
-  document.getElementById('ra-inp').value=a?.mc||0;
+  document.getElementById('ra-inp').value=a?.oneTime||0;
   renderRSumm();
   calcRebal(true);
 }
@@ -1629,9 +1685,9 @@ function renderRSumm(){
 }
 function updateRebalTotal(){
   const cash=parseInt(document.getElementById('ra-cash')?.value)||0;
-  const mc=parseInt(document.getElementById('ra-inp')?.value)||0;
+  const oneTime=parseInt(document.getElementById('ra-inp')?.value)||0;
   const el=document.getElementById('ra-total');
-  if(el)el.textContent=fmt(cash+mc)+'원';
+  if(el)el.textContent=fmt(cash+oneTime)+'원';
 }
 let rebalTimer=null;
 function scheduleRebalCalc(){
@@ -1665,9 +1721,10 @@ function calcRebal(silent){
   const cashInAcct=parseInt(cashEl.value)||0;
   const contrib=parseInt(document.getElementById('ra-inp').value)||0;
   const totalCash=cashInAcct+contrib;
-  // 현금 저장
+  // 이번 회차 불입액은 oneTime에 저장한다. mc(월 불입액)는 설정 탭 전용이며
+  // 세액공제 카드가 mc×12로 연 납입액을 추정하므로 일회성 금액이 섞이면 안 된다.
   const a=S.accounts.find(x=>x.id===ract);
-  if(a){a.mc=contrib;a.cash=cashInAcct;sv()}
+  if(a){a.oneTime=contrib;a.cash=cashInAcct;sv()}
   const hs=S.holdings.filter(h=>h.a===ract);
   if(!hs.length){document.getElementById('rres').innerHTML='<div class="empty">종목 없음</div>';return}
   const st=hs.reduce((s,h)=>s+h.tgt,0);
@@ -2175,7 +2232,16 @@ function exportData(){
   const b=new Blob([JSON.stringify(S,null,2)],{type:'application/json'});
   const a=document.createElement('a');a.href=URL.createObjectURL(b);
   a.download=`pension_${new Date().toISOString().slice(0,10)}.json`;a.click();
+  if(!S.ui)S.ui={};
+  S.ui.lastExport=Date.now();sv();renderDash();
+  toast('백업 파일을 저장했어요 — 메일이나 클라우드에도 한 부 두세요');
 }
+function daysSinceBackup(){
+  const t=S.ui?.lastExport;
+  if(!t)return null;
+  return Math.floor((Date.now()-t)/86400000);
+}
+function dismissMcVerify(){S.ui.mcVerify=false;sv();renderDash()}
 function importData(e){
   const f=e.target.files[0];if(!f)return;
   const r=new FileReader();
@@ -2188,6 +2254,8 @@ function importData(e){
       const cur=S.holdings.length;
       if(!confirm(`현재 ${cur}개 종목을 ${cnt}개로 덮어씁니다.\n계속할까요? (현재 데이터는 사라집니다)`))return;
       S={...S,...migrate(p)};
+      if(!S.ui)S.ui={};
+      S.ui.lastExport=Date.now(); // 방금 복원했다면 백업 파일이 손에 있다는 뜻
       sv();applyUI();renderAll();
       toast(`복원 완료 (${cnt}개 종목)`);
     }
