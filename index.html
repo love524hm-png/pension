@@ -726,7 +726,7 @@ body.privacy .hval:active,body.privacy .acct-eval:active{filter:none}
     </div>
     <div class="fg"><label class="fl">종목명</label><input class="fi" id="f-nm" type="text" placeholder="TIGER 미국나스닥100"></div>
     <div class="fr">
-      <div class="fg"><label class="fl">종목코드</label><input class="fi" id="f-cd" type="text" placeholder="133690 또는 AAPL" maxlength="12"></div>
+      <div class="fg"><label class="fl">종목코드</label><input class="fi" id="f-cd" type="text" placeholder="133690 (국내 상장만)" maxlength="12"></div>
       <div class="fg"><label class="fl">목표비중 (%)</label><input class="fi" id="f-tg" type="number" placeholder="30" step="0.5" inputmode="decimal"></div>
     </div>
     <div class="fr">
@@ -837,6 +837,12 @@ let S={
       irpAutoSafe:false,lastExport:null,mcVerify:false}
 };
 let curTab='guide',eid=null,ract='irp',bulkAcct='irp',pfSearch='';
+
+// 연금저축·IRP는 국내 상장 종목만 매수할 수 있다. 해외 티커(AAPL 등)를 받으면
+// 야후가 달러 가격을 주는데 앱은 전부 원화로 합산하므로 금액이 환율 배수만큼 틀어진다.
+// 한국 종목코드는 숫자로 시작하는 5~6자다 (133690, 00510, 0051G0). 미국 티커는 전부 알파벳이다.
+const KR_CODE_RE=/^[0-9][0-9A-Z]{4,5}$/i;
+const isKrCode=c=>KR_CODE_RE.test(String(c||''));
 
 // IRP 안전자산 휴리스틱 — 종목명 패턴 기반 자동 분류
 function inferSafeRatio(name){
@@ -1056,33 +1062,18 @@ async function fetchNaverHTML(code){
   return null;
 }
 
-// 범용 Yahoo 조회 (미국 티커 등 알파벳 코드용 — .KS 접미사 없음)
-async function fetchYahooGeneric(code){
-  if(!code)return null;
-  const d=await tryFetch(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(code)}?interval=1d&range=1d`);
-  const res=d?.chart?.result?.[0];
-  if(!res)return null;
-  const price=res.meta?.regularMarketPrice;
-  const prev=res.meta?.previousClose||res.meta?.chartPreviousClose;
-  if(!price)return null;
-  return{price,chgP:prev?((price-prev)/prev*100):0,ok:true,currency:res.meta?.currency||''};
-}
-
 async function fetchP(code){
   if(!code)return{ok:false};
-  // 5~6자 한국 종목코드 (예: 00510, 0051G0, 133690)
-  if(/^[0-9A-Z]{5,6}$/i.test(code)){
-    // 5자리면 좌측 0 패딩 시도
-    const padded=code.length===5?'0'+code:code;
-    return (await fetchNaver(code))
-        || (code!==padded&&await fetchNaver(padded))
-        || (await fetchYahoo(code))
-        || (await fetchNaverHTML(code))
-        || (await fetchYahooGeneric(code))
-        || {ok:false};
-  }
-  // 그 외 (미국 티커 등) — Yahoo 직접 조회
-  return (await fetchYahooGeneric(code)) || {ok:false};
+  // 국내 상장 종목만 조회한다. 해외 티커는 달러 가격이 원화 합산에 섞이므로
+  // 틀린 금액을 보여주느니 시세 없음으로 두고 평단 기준으로 계산한다.
+  if(!isKrCode(code))return{ok:false,foreign:true};
+  // 5자리면 좌측 0 패딩 시도
+  const padded=code.length===5?'0'+code:code;
+  return (await fetchNaver(code))
+      || (code!==padded&&await fetchNaver(padded))
+      || (await fetchYahoo(code))
+      || (await fetchNaverHTML(code))
+      || {ok:false};
 }
 
 async function refreshPrices(){
@@ -1490,6 +1481,17 @@ function renderDash(){
       </div>
     </div>`:'';
 
+  // 이전 버전에서 해외 티커로 저장된 종목 — 달러 가격이 원화에 섞였을 수 있다
+  const foreign=S.holdings.filter(h=>h.code&&!isKrCode(h.code));
+  const foreignBanner=foreign.length?`
+    <div class="warn-banner mc-banner" onclick="go('settings')">
+      <div class="warn-ic">🌏</div>
+      <div class="warn-body">
+        <div class="warn-ttl">${foreign.length}종목이 해외 코드예요</div>
+        <div class="warn-sub">${foreign.slice(0,2).map(h=>h.name).join(', ')}${foreign.length>2?' 외':''} · 평단 기준으로 계산 중 · 탭하여 수정</div>
+      </div>
+    </div>`:'';
+
   // v2에서 리밸런싱 탭이 월 불입액을 덮어썼을 수 있다 (migrate v3 참조)
   const mcBanner=S.ui?.mcVerify?`
     <div class="warn-banner mc-banner" onclick="go('settings')">
@@ -1513,6 +1515,7 @@ function renderDash(){
     }).join('');
   }
   el.innerHTML=`
+    ${foreignBanner}
     ${mcBanner}
     ${backupBanner}
     ${warnBanner}
@@ -2009,7 +2012,7 @@ async function searchStock(q){
   const d=await tryFetch(`https://m.stock.naver.com/front-api/search/autoComplete?query=${query}&target=stock,index,marketindicator`);
   const items=d?.result?.items||[];
   return items
-    .filter(it=>it.code&&it.name&&/^[0-9A-Z]+$/i.test(it.code))
+    .filter(it=>it.code&&it.name&&isKrCode(it.code))
     .slice(0,10)
     .map(it=>({code:String(it.code).toUpperCase(),name:it.name,market:it.typeName||it.nationName||''}));
 }
@@ -2061,6 +2064,8 @@ function addFromSearch(code,name,market){
 function saveBulk(){
   const rows=getBulkRows().filter(r=>r.name);
   if(!rows.length){toast('종목명을 하나 이상 입력하세요');return}
+  const bad=rows.filter(r=>r.code&&!isKrCode(r.code));
+  if(bad.length){toast(`${bad[0].name}: 국내 상장 종목만 가능해요 (코드 ${bad[0].code})`);return}
   // 기존 종목 id를 코드로 매칭하여 보존 (배당 기록 hid 끊김 방지)
   const existingByCode=new Map();
   S.holdings.filter(h=>h.a===bulkAcct&&h.code).forEach(h=>existingByCode.set(h.code,h.id));
@@ -2117,9 +2122,11 @@ function openEdit(id){
 function saveH(){
   const nm=document.getElementById('f-nm').value.trim();
   if(!nm){toast('종목명을 입력하세요');return}
+  const cd=document.getElementById('f-cd').value.trim().replace(/[^A-Za-z0-9]/g,'').toUpperCase();
+  if(cd&&!isKrCode(cd)){toast('연금계좌는 국내 상장 종목만 가능해요 (예: 133690)');return}
   const h={
     a:document.getElementById('f-ac').value,name:nm,
-    code:document.getElementById('f-cd').value.trim().replace(/[^A-Za-z0-9]/g,'').toUpperCase(),
+    code:cd,
     qty:parseInt(document.getElementById('f-qt').value)||0,
     avg:parseInt(document.getElementById('f-av').value)||0,
     tgt:parseFloat(document.getElementById('f-tg').value)||0,
