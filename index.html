@@ -1095,13 +1095,40 @@ async function fetchP(code){
       || {ok:false};
 }
 
+// 저장소에 함께 올라가는 시세 파일. 같은 출처라 CORS도 프록시도 필요 없다.
+// GitHub Actions가 장중 30분마다 갱신한다 (.github/workflows/prices.yml).
+async function fetchPriceCache(){
+  try{
+    const ctrl=new AbortController(),t=setTimeout(()=>ctrl.abort(),5000);
+    const r=await fetch(`prices.json?t=${Date.now()}`,{cache:'no-store',signal:ctrl.signal});
+    clearTimeout(t);
+    if(!r.ok)return null;
+    const d=await r.json();
+    return d&&d.prices?d:null;
+  }catch{return null}
+}
+
 async function refreshPrices(){
   if(!S.holdings.length){toast('종목을 먼저 추가하세요');return}
   const b=document.getElementById('rb');b.classList.add('spin');
   toast('시세 불러오는 중...');
-  const codes=[...new Set(S.holdings.filter(h=>h.code).map(h=>h.code))];
+  let codes=[...new Set(S.holdings.filter(h=>h.code).map(h=>h.code))];
+  const total=codes.length;
   let ok=0;
   const failed=[];
+  // 1) 저장된 시세 파일에서 먼저 채운다
+  const cache=await fetchPriceCache();
+  if(cache){
+    S.cacheAt=cache.updatedAt||null;
+    codes=codes.filter(c=>{
+      const row=cache.prices[c];
+      if(!Array.isArray(row)||!row[0])return true;
+      S.prices[c]={price:row[0],chgP:row[1]||0,ok:true,src:'cache',fetchedAt:Date.now()};
+      ok++;
+      return false;
+    });
+  }
+  // 2) 파일에 없는 종목만 실시간 조회로 넘긴다
   priceDeadline=Date.now()+PRICE_BUDGET_MS;
   try{
     for(let i=0;i<codes.length;i+=3){
@@ -1109,7 +1136,7 @@ async function refreshPrices(){
       const batch=codes.slice(i,i+3);
       const res=await Promise.all(batch.map(c=>fetchP(c)));
       batch.forEach((c,idx)=>{
-        if(res[idx]?.ok){S.prices[c]={...res[idx],fetchedAt:Date.now()};ok++}
+        if(res[idx]?.ok){S.prices[c]={...res[idx],src:'live',fetchedAt:Date.now()};ok++}
         else{failed.push(c);if(S.prices[c])S.prices[c].stale=true}
       });
     }
@@ -1118,7 +1145,7 @@ async function refreshPrices(){
   captureSnapshot();
   b.classList.remove('spin');
   renderAll();
-  if(ok>0)toast(`시세 업데이트 ${ok}/${codes.length}개`);
+  if(ok>0)toast(`시세 업데이트 ${ok}/${total}개`);
   else toast('시세 서버에 연결하지 못했어요 → 설정 > 수동 가격 입력');
 }
 
@@ -1596,7 +1623,14 @@ function renderDash(){
       }).join('')}
     </div>`;
 
-  if(S.lu){const d=new Date(S.lu);document.getElementById('upd-txt').textContent='업데이트: '+d.toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit'})}
+  if(S.lu){
+    const d=new Date(S.lu);
+    const usedCache=Object.values(S.prices).some(p=>p?.src==='cache');
+    const at=S.cacheAt?new Date(S.cacheAt):null;
+    document.getElementById('upd-txt').textContent=(usedCache&&at&&!isNaN(at))
+      ? '시세 기준: '+at.toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit'})
+      : '업데이트: '+d.toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit'});
+  }
 }
 
 // ── Portfolio ──

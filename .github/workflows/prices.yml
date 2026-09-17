@@ -1,0 +1,36 @@
+name: 시세 갱신
+
+# 한국 장중(KST 09:00~15:30)에 30분 간격으로 ETF 시세를 받아 prices.json에 저장한다.
+# 앱이 같은 출처에서 읽으므로 외부 CORS 프록시에 의존하지 않게 된다.
+on:
+  schedule:
+    - cron: "0,30 0-6 * * 1-5" # UTC. KST 09:00~15:30
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: prices
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 시세 수집
+        run: python scripts/fetch_prices.py
+
+      - name: 변경분 커밋
+        run: |
+          if [ -z "$(git status --porcelain prices.json)" ]; then
+            echo "변동 없음 — 커밋 생략"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add prices.json
+          git commit -m "chore: 시세 갱신 $(TZ=Asia/Seoul date '+%Y-%m-%d %H:%M KST')"
+          git push
