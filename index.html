@@ -608,13 +608,13 @@ body.privacy .hval:active,body.privacy .acct-eval:active{filter:none}
         <div class="clbl" style="margin-bottom:12px">계좌 현금 + 이번 회차 불입액</div>
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
           <span style="font-size:12px;color:var(--text2);white-space:nowrap">계좌 현금</span>
-          <input class="minp" id="ra-cash" type="number" placeholder="0" inputmode="numeric" value="0"
+          <input class="minp" id="ra-cash" type="number" min="0" placeholder="0" inputmode="numeric" value="0"
             style="flex:1;font-size:14px" oninput="updateRebalTotal();scheduleRebalCalc()">
           <span style="font-size:11px;color:var(--text3);white-space:nowrap">원</span>
         </div>
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
           <span style="font-size:12px;color:var(--text2);white-space:nowrap">이번 회차 불입</span>
-          <input class="minp" id="ra-inp" type="number" placeholder="0" inputmode="numeric" value="0"
+          <input class="minp" id="ra-inp" type="number" min="0" placeholder="0" inputmode="numeric" value="0"
             style="flex:1;font-size:14px" oninput="updateRebalTotal();scheduleRebalCalc()">
           <span style="font-size:11px;color:var(--text3);white-space:nowrap">원</span>
         </div>
@@ -727,11 +727,11 @@ body.privacy .hval:active,body.privacy .acct-eval:active{filter:none}
     <div class="fg"><label class="fl">종목명</label><input class="fi" id="f-nm" type="text" placeholder="TIGER 미국나스닥100"></div>
     <div class="fr">
       <div class="fg"><label class="fl">종목코드</label><input class="fi" id="f-cd" type="text" placeholder="133690 (국내 상장만)" maxlength="12"></div>
-      <div class="fg"><label class="fl">목표비중 (%)</label><input class="fi" id="f-tg" type="number" placeholder="30" step="0.5" inputmode="decimal"></div>
+      <div class="fg"><label class="fl">목표비중 (%)</label><input class="fi" id="f-tg" type="number" min="0" max="100" placeholder="30" step="0.5" inputmode="decimal"></div>
     </div>
     <div class="fr">
-      <div class="fg"><label class="fl">보유수량 (주)</label><input class="fi" id="f-qt" type="number" placeholder="0" inputmode="numeric"></div>
-      <div class="fg"><label class="fl">매입평단가 (원)</label><input class="fi" id="f-av" type="number" placeholder="0" inputmode="numeric"></div>
+      <div class="fg"><label class="fl">보유수량 (주)</label><input class="fi" id="f-qt" type="number" min="0" placeholder="0" inputmode="numeric"></div>
+      <div class="fg"><label class="fl">매입평단가 (원)</label><input class="fi" id="f-av" type="number" min="0" placeholder="0" inputmode="numeric"></div>
     </div>
     <div class="fg" id="fg-safe">
       <label class="fl">IRP 안전자산 분류 <span style="color:var(--text3);font-weight:400">— IRP 30% 룰 적용</span></label>
@@ -808,7 +808,7 @@ body.privacy .hval:active,body.privacy .acct-eval:active{filter:none}
         <select id="dv-code" class="minp"></select>
       </div>
       <div class="div-add-row">
-        <input id="dv-amt" type="number" class="minp" placeholder="배당 금액 (원)" inputmode="numeric">
+        <input id="dv-amt" type="number" min="0" class="minp" placeholder="배당 금액 (원)" inputmode="numeric">
         <button class="msv" onclick="addDividend()">추가</button>
       </div>
     </div>
@@ -843,6 +843,17 @@ let curTab='guide',eid=null,ract='irp',bulkAcct='irp',pfSearch='';
 // 한국 종목코드는 숫자로 시작하는 5~6자다 (133690, 00510, 0051G0). 미국 티커는 전부 알파벳이다.
 const KR_CODE_RE=/^[0-9][0-9A-Z]{4,5}$/i;
 const isKrCode=c=>KR_CODE_RE.test(String(c||''));
+
+// 금액·수량·비중 검증. 음수나 비정상 값이 저장되면 손익·비중·리밸런싱이 전부 무의미해진다.
+const MAX_MONEY=1e12;
+function checkHolding(h){
+  if(!(h.qty>=0))return '보유수량은 0 이상이어야 해요';
+  if(!(h.avg>=0))return '매입평단가는 0 이상이어야 해요';
+  if(!(h.tgt>=0&&h.tgt<=100))return '목표비중은 0~100% 사이여야 해요';
+  if(h.avg>MAX_MONEY||h.qty>MAX_MONEY)return '숫자가 너무 커요 — 자릿수를 확인해주세요';
+  return null;
+}
+const clampMoney=v=>{const n=parseInt(v)||0;return Math.min(Math.max(n,0),MAX_MONEY)};
 
 // IRP 안전자산 휴리스틱 — 종목명 패턴 기반 자동 분류
 function inferSafeRatio(name){
@@ -1687,8 +1698,8 @@ function renderRSumm(){
   updateRebalTotal();
 }
 function updateRebalTotal(){
-  const cash=parseInt(document.getElementById('ra-cash')?.value)||0;
-  const oneTime=parseInt(document.getElementById('ra-inp')?.value)||0;
+  const cash=clampMoney(document.getElementById('ra-cash')?.value);
+  const oneTime=clampMoney(document.getElementById('ra-inp')?.value);
   const el=document.getElementById('ra-total');
   if(el)el.textContent=fmt(cash+oneTime)+'원';
 }
@@ -1721,8 +1732,8 @@ function applyIrpSafetyRule(hs,normalizedTgt){
 function calcRebal(silent){
   const cashEl=document.getElementById('ra-cash');
   if(!cashEl)return;
-  const cashInAcct=parseInt(cashEl.value)||0;
-  const contrib=parseInt(document.getElementById('ra-inp').value)||0;
+  const cashInAcct=clampMoney(cashEl.value);
+  const contrib=clampMoney(document.getElementById('ra-inp').value);
   const totalCash=cashInAcct+contrib;
   // 이번 회차 불입액은 oneTime에 저장한다. mc(월 불입액)는 설정 탭 전용이며
   // 세액공제 카드가 mc×12로 연 납입액을 추정하므로 일회성 금액이 섞이면 안 된다.
@@ -1837,11 +1848,11 @@ function renderSettings(){
     return`<div style="${border}">
       <div class="sr" style="border-bottom:1px solid var(--border)">
         <div class="sri"><div class="srn">${a.name} 계좌 현금</div><div class="srs">분배금·미투자금 등 잔여현금</div></div>
-        <input class="ci" type="number" value="${a.cash||0}" onchange="updCash('${a.id}',this.value)" inputmode="numeric">
+        <input class="ci" type="number" min="0" value="${a.cash||0}" onchange="updCash('${a.id}',this.value)" inputmode="numeric">
       </div>
       <div class="sr">
         <div class="sri"><div class="srn">${a.name} 월 불입액</div><div class="srs">이달 추가 납입 예정금</div></div>
-        <input class="ci" type="number" value="${a.mc||0}" onchange="updMC('${a.id}',this.value)" inputmode="numeric">
+        <input class="ci" type="number" min="0" value="${a.mc||0}" onchange="updMC('${a.id}',this.value)" inputmode="numeric">
       </div>
     </div>`;
   }).join('');
@@ -1883,8 +1894,8 @@ function renderAcctHoldings(aid,elId,sumId){
       <button class="ib d" onclick="delH(${h.id})" aria-label="삭제">✕</button>
     </div>`}).join(''):'<div class="empty" style="padding:14px;font-size:12px">종목 없음</div>';
 }
-function updMC(id,v){const a=S.accounts.find(x=>x.id===id);if(a){a.mc=parseInt(v)||0;sv();renderDash()}}
-function updCash(id,v){const a=S.accounts.find(x=>x.id===id);if(a){a.cash=parseInt(v)||0;sv();renderDash()}}
+function updMC(id,v){const a=S.accounts.find(x=>x.id===id);if(a){a.mc=clampMoney(v);sv();renderSettings();renderDash()}}
+function updCash(id,v){const a=S.accounts.find(x=>x.id===id);if(a){a.cash=clampMoney(v);sv();renderSettings();renderDash()}}
 
 // ── Bulk Input (카드형 · 검색 + 붙여넣기) ──
 let bulkRowId=0, bulkSearchTimer=null;
@@ -1930,15 +1941,15 @@ function addBulkRow(h=null){
       </div>
       <div class="bulk-field">
         <label>수량</label>
-        <div class="bulk-field-inp"><input class="bulk-qty" type="number" inputmode="numeric" placeholder="0" value="${v(h?.qty)}" oninput="updateBulkCount()"><span class="bulk-field-unit">주</span></div>
+        <div class="bulk-field-inp"><input class="bulk-qty" type="number" min="0" inputmode="numeric" placeholder="0" value="${v(h?.qty)}" oninput="updateBulkCount()"><span class="bulk-field-unit">주</span></div>
       </div>
       <div class="bulk-field">
         <label>평단가</label>
-        <div class="bulk-field-inp"><input class="bulk-avg" type="number" inputmode="numeric" placeholder="0" value="${v(h?.avg)}" oninput="updateBulkCount()"><span class="bulk-field-unit">원</span></div>
+        <div class="bulk-field-inp"><input class="bulk-avg" type="number" min="0" inputmode="numeric" placeholder="0" value="${v(h?.avg)}" oninput="updateBulkCount()"><span class="bulk-field-unit">원</span></div>
       </div>
       <div class="bulk-field">
         <label>목표%</label>
-        <div class="bulk-field-inp"><input class="bulk-tgt" type="number" inputmode="decimal" placeholder="0" step="0.5" value="${v(h?.tgt)}" oninput="updateBulkCount()"><span class="bulk-field-unit">%</span></div>
+        <div class="bulk-field-inp"><input class="bulk-tgt" type="number" min="0" max="100" inputmode="decimal" placeholder="0" step="0.5" value="${v(h?.tgt)}" oninput="updateBulkCount()"><span class="bulk-field-unit">%</span></div>
       </div>
     </div>`;
   wrap.appendChild(card);
@@ -2066,6 +2077,10 @@ function saveBulk(){
   if(!rows.length){toast('종목명을 하나 이상 입력하세요');return}
   const bad=rows.filter(r=>r.code&&!isKrCode(r.code));
   if(bad.length){toast(`${bad[0].name}: 국내 상장 종목만 가능해요 (코드 ${bad[0].code})`);return}
+  for(const r of rows){
+    const err=checkHolding(r);
+    if(err){toast(`${r.name}: ${err}`);return}
+  }
   // 기존 종목 id를 코드로 매칭하여 보존 (배당 기록 hid 끊김 방지)
   const existingByCode=new Map();
   S.holdings.filter(h=>h.a===bulkAcct&&h.code).forEach(h=>existingByCode.set(h.code,h.id));
@@ -2132,6 +2147,8 @@ function saveH(){
     tgt:parseFloat(document.getElementById('f-tg').value)||0,
     safeRatio:parseInt(document.getElementById('f-sf').value)||0
   };
+  const err=checkHolding(h);
+  if(err){toast(err);return}
   if(eid){const i=S.holdings.findIndex(x=>x.id===eid);if(i>=0)S.holdings[i]={id:eid,...h}}
   else{const mx=S.holdings.reduce((m,x)=>Math.max(m,x.id),0);S.holdings.push({id:mx+1,...h})}
   sv();covD('ov-h');renderAll();toast(eid?'수정 완료':'종목 추가 완료');
@@ -2207,7 +2224,7 @@ function delDividend(id){
 function openMP(){
   document.getElementById('mpg').innerHTML=S.holdings.map(h=>{
     const pd=S.prices[h.code],cur=pd?.ok?pd.price:'';
-    return`<div class="mpr"><div class="mpn">${h.name}</div><input class="mpi" type="number" data-code="${h.code}" value="${cur||''}" placeholder="현재가" inputmode="numeric"></div>`;
+    return`<div class="mpr"><div class="mpn">${h.name}</div><input class="mpi" type="number" min="0" data-code="${h.code}" value="${cur||''}" placeholder="현재가" inputmode="numeric"></div>`;
   }).join('')||'<div class="empty">종목 없음</div>';
   document.getElementById('ov-p').classList.add('on');
 }
