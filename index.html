@@ -823,7 +823,7 @@ body.privacy .hval:active,body.privacy .acct-eval:active{filter:none}
 <div id="toast"></div>
 <script>
 // ── State ──
-const SCHEMA_V=3;
+const SCHEMA_V=4;
 const IRP_SAFE_MIN=30; // IRP 안전자산 최소 30% (법정)
 const IRP_RISK_MAX=70; // IRP 위험자산 최대 70%
 const BACKUP_REMIND_DAYS=14;
@@ -834,7 +834,7 @@ let S={
   holdings:[],prices:{},lu:null,dividends:[],snapshots:[],lastProxyIdx:0,
   ui:{colorScheme:'kr',privacy:false,pfSort:'default',collapsed:{irp:false,pen:false},
       density:'compact',fontSize:'normal',targetCashBuffer:false,wdStartAge:65,wdYears:25,
-      irpAutoSafe:false,lastExport:null,mcVerify:false}
+      irpAutoSafe:true,irpAutoSafeTouched:false,lastExport:null,mcVerify:false}
 };
 let curTab='guide',eid=null,ract='irp',bulkAcct='irp',pfSearch='';
 
@@ -906,6 +906,14 @@ function migrate(p){
     });
     if(dirty){if(!p.ui)p.ui={};p.ui.mcVerify=true}
   }
+  if(!p.v||p.v<4){
+    // v3→v4: IRP 안전자산 자동보정을 기본 켜기로 바꾼다.
+    // 꺼져 있으면 증권사가 거부할 매수 수량을 그대로 안내하게 된다.
+    // v3까지는 사용자가 직접 끈 것과 기본값 false를 구분할 수 없었으므로
+    // 여기서 한 번 켜고, 이후의 선택은 irpAutoSafeTouched로 보존한다.
+    if(!p.ui)p.ui={};
+    if(!p.ui.irpAutoSafeTouched)p.ui.irpAutoSafe=true;
+  }
   p.v=SCHEMA_V;
   return p;
 }
@@ -929,7 +937,7 @@ function ld(){
       if(!S.dividends)S.dividends=[];
       if(!S.snapshots)S.snapshots=[];
       if(!S.ui)S.ui={};
-      const uiD={colorScheme:'kr',privacy:false,pfSort:'default',collapsed:{irp:false,pen:false},density:'compact',fontSize:'normal',targetCashBuffer:false,wdStartAge:65,wdYears:25,lastExport:null,mcVerify:false};
+      const uiD={colorScheme:'kr',privacy:false,pfSort:'default',collapsed:{irp:false,pen:false},density:'compact',fontSize:'normal',targetCashBuffer:false,wdStartAge:65,wdYears:25,irpAutoSafe:true,irpAutoSafeTouched:false,lastExport:null,mcVerify:false};
       S.ui={...uiD,...S.ui};
       if(!S.ui.collapsed)S.ui.collapsed={irp:false,pen:false};
     }
@@ -1709,7 +1717,7 @@ function scheduleRebalCalc(){
   rebalTimer=setTimeout(()=>{if(curTab==='rebal')calcRebal()},350);
 }
 function setCashBuffer(v){S.ui.targetCashBuffer=v;sv();calcRebal(true)}
-function setIrpAutoSafe(v){S.ui.irpAutoSafe=v;sv();calcRebal(true)}
+function setIrpAutoSafe(v){S.ui.irpAutoSafe=v;S.ui.irpAutoSafeTouched=true;sv();calcRebal(true)}
 
 // IRP 룰 적용: 위험자산 합 > 70%면 70% 캡, 안전자산 < 30%면 30% 확장
 function applyIrpSafetyRule(hs,normalizedTgt){
@@ -2290,7 +2298,7 @@ function importData(e){
 function resetAll(){
   if(!confirm('모든 데이터를 삭제하시겠습니까?\n이 작업은 되돌릴 수 없습니다.'))return;
   localStorage.removeItem('pf5');
-  S={v:SCHEMA_V,accounts:[{id:'irp',name:'IRP',mc:0,cash:0},{id:'pension',name:'연금저축',mc:0,cash:0}],holdings:[],prices:{},lu:null,dividends:[],snapshots:[],lastProxyIdx:0,ui:{colorScheme:'kr',privacy:false,pfSort:'default',collapsed:{irp:false,pen:false},density:'compact',fontSize:'normal',targetCashBuffer:false,wdStartAge:65,wdYears:25,irpAutoSafe:false}};
+  S={v:SCHEMA_V,accounts:[{id:'irp',name:'IRP',mc:0,cash:0,oneTime:0},{id:'pension',name:'연금저축',mc:0,cash:0,oneTime:0}],holdings:[],prices:{},lu:null,dividends:[],snapshots:[],lastProxyIdx:0,ui:{colorScheme:'kr',privacy:false,pfSort:'default',collapsed:{irp:false,pen:false},density:'compact',fontSize:'normal',targetCashBuffer:false,wdStartAge:65,wdYears:25,irpAutoSafe:true,irpAutoSafeTouched:false,lastExport:null,mcVerify:false}};
   sv();applyUI();renderAll();toast('초기화 완료');
 }
 
